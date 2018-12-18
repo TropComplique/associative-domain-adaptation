@@ -1,4 +1,5 @@
 import torch
+import torch.nn as nn
 import torch.nn.functional as F
 
 
@@ -9,7 +10,7 @@ EPSILON = 1e-8
 class WalkerVisitLosses(nn.Module):
 
     def __init__(self):
-        super(WalkerAndVisitLoss, self).__init__()
+        super(WalkerVisitLosses, self).__init__()
 
     def forward(self, a, b, a_labels):
         """
