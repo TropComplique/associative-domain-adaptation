@@ -1,4 +1,5 @@
 import torch
+import torch.nn.init
 import torch.nn as nn
 
 
@@ -26,6 +27,14 @@ class Network(nn.Module):
         self.embedding = nn.Linear(128 * final_area, embedding_dim)
         self.final_area = final_area
         self.embedding_dim = embedding_dim
+
+        def weights_init(m):
+            if isinstance(m, nn.Conv2d):
+                torch.nn.init.kaiming_uniform_(m.weight)
+                if m.bias is not None:
+                    torch.nn.init.zeros_(m.bias)
+
+        self.apply(weights_init)
 
     def forward(self, x):
         """

@@ -1,7 +1,9 @@
 import torch
 import torch.nn as nn
 import torch.optim as optim
+from torch.optim.lr_scheduler import CosineAnnealingLR
 from torch.utils.data import DataLoader
+import math
 
 from network import Network
 from losses import WalkerVisitLosses
@@ -10,6 +12,7 @@ from input_pipeline import get_datasets
 
 BATCH_SIZE = 1000
 NUM_EPOCHS = 100
+EMBEDDING_DIM = 64
 DELAY = 500
 BETA1 = 1.0
 BETA2 = 0.5
@@ -17,19 +20,30 @@ DEVICE = torch.device('cuda:0')
 SAVE_PATH = 'models/run00.pth'
 
 
-def train_and_evaluate(source_loader, target_loader, val_source_loader, val_target_loader):
+def train_and_evaluate():
 
-    embedder = Network(image_size=(32, 32), embedding_dim=64).to(DEVICE)
-    classifier = nn.Linear(64, 10).to(DEVICE)
+    svhn, mnist = get_datasets(is_training=True)
+    source_loader = DataLoader(svhn, BATCH_SIZE, shuffle=True, pin_memory=True, drop_last=True)
+    target_loader = DataLoader(mnist, BATCH_SIZE, shuffle=True, pin_memory=True, drop_last=True)
+
+    val_svhn, val_mnist = get_datasets(is_training=False)
+    val_source_loader = DataLoader(val_svhn, BATCH_SIZE, shuffle=False, drop_last=False)
+    val_target_loader = DataLoader(val_mnist, BATCH_SIZE, shuffle=False, drop_last=False)
+
+    num_steps_per_epoch = math.floor(min(len(svhn), len(mnist)) / BATCH_SIZE)
+    embedder = Network(image_size=(32, 32), embedding_dim=EMBEDDING_DIM).to(DEVICE)
+    classifier = nn.Linear(EMBEDDING_DIM, 10).to(DEVICE)
     model = nn.Sequential(embedder, classifier)
-    optimizer = optim.Adam(lr=5e-4, params=model.parameters())
 
-    model.train()
+    optimizer = optim.Adam(lr=1e-3, params=model.parameters())
+    scheduler = CosineAnnealingLR(optimizer, T_max=num_steps_per_epoch * NUM_EPOCHS, eta_min=1e-6)
+
     cross_entropy = nn.CrossEntropyLoss()
     association = WalkerVisitLosses()
 
     text = 'e:{0:2d}, i:{1:3d}, classification loss: {2:.3f}, ' +\
-        'walker loss: {3:.3f}, visit loss: {4:.3f}, total loss: {5:.3f}'
+        'walker loss: {3:.3f}, visit loss: {4:.3f}, ' +\
+        'total loss: {5:.3f}, lr: {6:.6f}'
     logs = []
     i = 0  # iteration
 
@@ -42,22 +56,24 @@ def train_and_evaluate(source_loader, target_loader, val_source_loader, val_targ
 
             x = torch.cat([x_source, x_target], dim=0)
             embeddings = embedder(x)
-            a, b = torch.split(embeddings, batch_size, dim=0)
+            a, b = torch.split(embeddings, BATCH_SIZE, dim=0)
             logits = classifier(a)
-
             usual_loss = cross_entropy(logits, y_source)
-            loss = usual_loss
-
             walker_loss, visit_loss = association(a, b, y_source)
+
             if i > DELAY:
-                loss += BETA1 * walker_loss
-                loss += BETA2 * visit_loss
+                loss = usual_loss + BETA1 * walker_loss + BETA2 * visit_loss
+            else:
+                loss = usual_loss
 
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
 
-            log = (e, i, usual_loss, walker_loss, visit_loss, loss)
+            scheduler.step()
+            lr = scheduler.get_lr()
+
+            log = (e, i, usual_loss, walker_loss, visit_loss, loss, lr)
             print(text.format(*log))
             logs.append(log)
             i += 1
@@ -72,7 +88,6 @@ def train_and_evaluate(source_loader, target_loader, val_source_loader, val_targ
 
 def evaluate(model, criterion, loader):
 
-    model.eval()
     total_loss = 0.0
     num_hits = 0
     num_samples = 0
@@ -97,12 +112,4 @@ def evaluate(model, criterion, loader):
     return loss, accuracy
 
 
-source_dataset, target_dataset = get_datasets(is_training=True)
-source_loader = DataLoader(source_dataset, BATCH_SIZE, shuffle=True, pin_memory=True, drop_last=True)
-target_loader = DataLoader(target_dataset, BATCH_SIZE, shuffle=True, pin_memory=True, drop_last=True)
-
-val_source_dataset, val_target_dataset = get_datasets(is_training=False)
-val_source_loader = DataLoader(val_source_dataset, BATCH_SIZE, shuffle=False, drop_last=False)
-val_target_loader = DataLoader(val_target_dataset, BATCH_SIZE, shuffle=False, drop_last=False)
-
-train_and_evaluate(source_loader, target_loader, val_source_loader, val_target_loader)
+train_and_evaluate()

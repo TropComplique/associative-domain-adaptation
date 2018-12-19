@@ -10,18 +10,19 @@ def get_datasets(is_training):
     Returns:
         two datasets with RGB images of size 32x32,
         pixel values are in range [0, 1].
+        Possible labels are {0, 1, 2, ..., 9}.
     """
-    source_dataset = SVHN(
+    svhn = SVHN(
         'datasets/svhn/', split='train' if is_training else 'test',
         download=True, transform=transforms.ToTensor()
     )
-    target_transform = transforms.Compose([
+    mnist_transform = transforms.Compose([
         transforms.Resize(32),
         transforms.ToTensor(),
         transforms.Lambda(lambda x: x.repeat(3, 1, 1))  # to RGB
     ])
-    target_dataset = MNIST(
+    mnist = MNIST(
         'datasets/mnist/', train=is_training,
-        download=True, transform=target_transform
+        download=True, transform=mnist_transform
     )
-    return source_dataset, target_dataset
+    return svhn, mnist
