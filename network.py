@@ -19,9 +19,10 @@ class Network(nn.Module):
             nn.MaxPool2d(kernel_size=2, stride=2),
         ]
         self.feature_extractor = nn.Sequential(*feature_extractor)
-    
-        assert image_size % 8 == 0
-        final_area = (image_size // 8) ** 2  # final spatial image size
+
+        width, height = image_size
+        assert width % 8 == 0 and height % 8 == 0
+        final_area = (width // 8) * (height // 8)
         self.embedding = nn.Linear(128 * final_area, embedding_dim)
         self.final_area = final_area
         self.embedding_dim = embedding_dim

@@ -5,5 +5,5 @@ This a `pytorch` implementation of [Associative Domain Adaptation](https://arxiv
 2. numpy, Pillow
 
 ## Other implementations
-1. https://github.com/stes/torch-associative
-2. https://github.com/haeusser/learning_by_association
+1. [stes/torch-associative](https://github.com/stes/torch-associative)
+2. [haeusser/learning_by_association](https://github.com/haeusser/learning_by_association)
