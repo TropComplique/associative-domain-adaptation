@@ -1,38 +1,49 @@
 import torch
 import torch.nn as nn
 import torch.optim as optim
+from torch.optim.lr_scheduler import CosineAnnealingLR
 from torch.utils.data import DataLoader
+import math
 
 from network import Network
 from input_pipeline import get_datasets
-from train import evaluate
+from utils import evaluate
 
 
-BATCH_SIZE = 1000
-NUM_EPOCHS = 100
+BATCH_SIZE = 32
+NUM_EPOCHS = 15
 EMBEDDING_DIM = 64
 DEVICE = torch.device('cuda:0')
-SAVE_PATH = 'models/run00.pth'
+DATA = 'svhn'  # 'svhn' or 'mnist'
+SAVE_PATH = 'models/just_svhn'
+
+
+def get_loaders():
+
+    svhn, mnist = get_datasets(is_training=True)
+    val_svhn, val_mnist = get_datasets(is_training=False)
+
+    train_dataset = svhn if DATA == 'svhn' else mnist
+    train_loader = DataLoader(train_dataset, BATCH_SIZE, shuffle=True, pin_memory=True, drop_last=True)
+
+    val_svhn_loader = DataLoader(val_svhn, BATCH_SIZE, shuffle=False, drop_last=False)
+    val_mnist_loader = DataLoader(val_mnist, BATCH_SIZE, shuffle=False, drop_last=False)
+    return train_loader, val_svhn_loader, val_mnist_loader
 
 
 def train_and_evaluate():
 
-    svhn, _ = get_datasets(is_training=True)
-    train_loader = DataLoader(svhn, BATCH_SIZE, shuffle=True, pin_memory=True, drop_last=True)
-
-    val_svhn, _ = get_datasets(is_training=False)
-    val_loader = DataLoader(val_svhn, BATCH_SIZE, shuffle=False, drop_last=False)
+    train_loader, val_svhn_loader, val_mnist_loader = get_loaders()
+    num_steps_per_epoch = math.floor(len(train_loader.dataset) / BATCH_SIZE)
+    print('\ntraining is on', DATA, '\n')
 
     embedder = Network(image_size=(32, 32), embedding_dim=EMBEDDING_DIM).to(DEVICE)
     classifier = nn.Linear(EMBEDDING_DIM, 10).to(DEVICE)
     model = nn.Sequential(embedder, classifier)
 
-    optimizer = optim.Adam(lr=1e-3, params=model.parameters())
+    optimizer = optim.Adam(lr=1e-3, params=model.parameters(), weight_decay=1e-3)
     scheduler = CosineAnnealingLR(optimizer, T_max=num_steps_per_epoch * NUM_EPOCHS, eta_min=1e-6)
     cross_entropy = nn.CrossEntropyLoss()
-
-    text = 'e:{0:2d}, i:{1:3d}, classification loss: {2:.3f}, lr: {3:.6f}'
-    logs = []
     i = 0  # iteration
 
     for e in range(NUM_EPOCHS):
@@ -49,16 +60,15 @@ def train_and_evaluate():
             optimizer.step()
 
             scheduler.step()
-            lr = scheduler.get_lr()
-
-            log = (e, i, lossб lr)
-            print(text.format(*log))
-            logs.append(log)
+            lr = scheduler.get_lr()[0]
             i += 1
 
-        l, a = evaluate(model, cross_entropy, val_svhn)
-        print('validation loss {0:.3f} and accuracy {1:.3f}'.format(l, a))
-
+        result1 = evaluate(model, cross_entropy, val_svhn_loader, DEVICE)
+        result2 = evaluate(model, cross_entropy, val_mnist_loader, DEVICE)
+        print('iteration', i)
+        print('svhn validation loss {0:.3f} and accuracy {1:.3f}'.format(*result1))
+        print('mnist validation loss {0:.3f} and accuracy {1:.3f}\n'.format(*result2))
+        
     torch.save(model.state_dict(), SAVE_PATH)
 
 
