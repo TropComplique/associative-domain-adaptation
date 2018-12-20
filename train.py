@@ -11,34 +11,47 @@ from input_pipeline import get_datasets
 from utils import evaluate, write_logs
 
 
+"""
+The purpose of this script is to train a simple
+CNN on mnist and svhn using associative domain adaptation.
+"""
+
+
 BATCH_SIZE = 1000
 NUM_EPOCHS = 1
 EMBEDDING_DIM = 64
-DELAY = 500
-GROWTH_STEPS = 300
-BETA1 = 1.0
-BETA2 = 0.5
+
+DELAY = 500  # number of steps before turning on additional losses
+GROWTH_STEPS = 300  # number of steps of linear growth of additional losses
+# so domain adaptation losses are in full strength after `DELAY + GROWTH_STEPS` steps
+
+BETA1, BETA2 = 1.0, 0.5
 DEVICE = torch.device('cuda:0')
-SAVE_PATH = 'models/run00.pth'
+SOURCE_DATA = 'svhn'  # 'svhn' or 'mnist'
+SAVE_PATH = 'models/svhn_source'
+LOGS_PATH = 'logs/svhn_source.json'
 
 
 def train_and_evaluate():
 
     svhn, mnist = get_datasets(is_training=True)
-    source_loader = DataLoader(svhn, BATCH_SIZE, shuffle=True, pin_memory=True, drop_last=True)
-    target_loader = DataLoader(mnist, BATCH_SIZE, shuffle=True, pin_memory=True, drop_last=True)
+    source_dataset = svhn if SOURCE_DATA == 'svhn' else mnist
+    target_dataset = mnist if SOURCE_DATA == 'svhn' else svhn
+    source_loader = DataLoader(source_dataset, BATCH_SIZE, shuffle=True, pin_memory=True, drop_last=True)
+    target_loader = DataLoader(target_dataset, BATCH_SIZE, shuffle=True, pin_memory=True, drop_last=True)
+    print('\nsource dataset is', SOURCE_DATA, '\n')
 
     val_svhn, val_mnist = get_datasets(is_training=False)
-    val_source_loader = DataLoader(val_svhn, BATCH_SIZE, shuffle=False, drop_last=False)
-    val_target_loader = DataLoader(val_mnist, BATCH_SIZE, shuffle=False, drop_last=False)
+    val_svhn_loader = DataLoader(val_svhn, BATCH_SIZE, shuffle=False, drop_last=False)
+    val_mnist_loader = DataLoader(val_mnist, BATCH_SIZE, shuffle=False, drop_last=False)
 
     num_steps_per_epoch = math.floor(min(len(svhn), len(mnist)) / BATCH_SIZE)
     embedder = Network(image_size=(32, 32), embedding_dim=EMBEDDING_DIM).to(DEVICE)
     classifier = nn.Linear(EMBEDDING_DIM, 10).to(DEVICE)
     model = nn.Sequential(embedder, classifier)
 
-    optimizer = optim.Adam(lr=1e-2, params=model.parameters())
-    scheduler = CosineAnnealingLR(optimizer, T_max=num_steps_per_epoch * NUM_EPOCHS, eta_min=1e-5)
+    optimizer = optim.Adam(lr=1e-3, params=model.parameters())
+    scheduler = CosineAnnealingLR(optimizer, T_max=num_steps_per_epoch * NUM_EPOCHS, eta_min=1e-6)
 
     cross_entropy = nn.CrossEntropyLoss()
     association = WalkerVisitLosses()
@@ -64,7 +77,7 @@ def train_and_evaluate():
             walker_loss, visit_loss = association(a, b, y_source)
 
             if i > DELAY:
-                growth = min((i - DELAY)/GROWTH_STEPS, 1.0)
+                growth = torch.clamp((i - DELAY)/GROWTH_STEPS, 0.0, 1.0)
                 loss = usual_loss + growth * (BETA1 * walker_loss + BETA2 * visit_loss)
             else:
                 loss = usual_loss
@@ -81,14 +94,14 @@ def train_and_evaluate():
             logs.append(log)
             i += 1
 
-        result1 = evaluate(model, cross_entropy, val_source_loader, DEVICE)
-        result2 = evaluate(model, cross_entropy, val_target_loader, DEVICE)
-        print('source loss {0:.3f} and accuracy {1:.3f}'.format(*result1))
-        print('target loss {0:.3f} and accuracy {1:.3f}'.format(*result2))
-        val_logs.append(result1 + result2)
+        result1 = evaluate(model, cross_entropy, val_svhn_loader, DEVICE)
+        result2 = evaluate(model, cross_entropy, val_mnist_loader, DEVICE)
+        print('\nsvhn loss {0:.3f} and accuracy {1:.3f}'.format(*result1))
+        print('mnist loss {0:.3f} and accuracy {1:.3f}\n'.format(*result2))
+        val_logs.append((i,) + result1 + result2)
 
     torch.save(model.state_dict(), SAVE_PATH)
-    write_logs(logs, val_logs)
+    write_logs(logs, val_logs, LOGS_PATH)
 
 
 train_and_evaluate()

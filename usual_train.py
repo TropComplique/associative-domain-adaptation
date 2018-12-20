@@ -10,6 +10,15 @@ from input_pipeline import get_datasets
 from utils import evaluate
 
 
+"""
+The purpose of this script is to train a simple
+CNN on mnist and svhn using a usual training method.
+
+This is needed for comparison with
+models trained with domain adaptation.
+"""
+
+
 BATCH_SIZE = 32
 NUM_EPOCHS = 15
 EMBEDDING_DIM = 64
@@ -58,9 +67,7 @@ def train_and_evaluate():
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
-
             scheduler.step()
-            lr = scheduler.get_lr()[0]
             i += 1
 
         result1 = evaluate(model, cross_entropy, val_svhn_loader, DEVICE)
@@ -68,7 +75,7 @@ def train_and_evaluate():
         print('iteration', i)
         print('svhn validation loss {0:.3f} and accuracy {1:.3f}'.format(*result1))
         print('mnist validation loss {0:.3f} and accuracy {1:.3f}\n'.format(*result2))
-        
+
     torch.save(model.state_dict(), SAVE_PATH)
 
 

@@ -33,13 +33,19 @@ def write_logs(logs, val_logs, path):
         'step', 'classification_loss',
         'walker_loss', 'visit_loss'
     ]
-    val_keys = ['val_step', 'logloss', '']
+    val_keys = [
+        'val_step', 'svhn_logloss', 'svhn_accuracy',
+        'mnist_logloss', 'mnist_accuracy'
+    ]
+    logs = {k: [] for k in keys + val_keys}
 
-    logs = {k: [] for k in keys}
-    
     for t in logs:
         for i, k in enumerate(keys, 1):
             logs[k].append(t[i])
-            
+
+    for t in val_logs:
+        for i, k in enumerate(val_keys):
+            logs[k].append(t[i])
+
     with open(path, 'w') as f:
         json.dump(logs, f)
