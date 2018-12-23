@@ -22,7 +22,9 @@ class WalkerVisitLosses(nn.Module):
         Returns:
             two float tensors with shape [].
         """
+        d = a.size(1)
         p = torch.matmul(a, b.t())  # shape [n, m]
+        p /= torch.tensor(d).float().sqrt()
 
         ab = F.softmax(p, dim=1)  # shape [n, m]
         ba = F.softmax(p.t(), dim=1)  # shape [m, n]
@@ -44,6 +46,6 @@ class WalkerVisitLosses(nn.Module):
         m = b.size(0)
         targets = (1.0 / m) * torch.ones_like(visit_probability)
         visit_loss = targets * torch.log(EPSILON + visit_probability)  # shape [m]
-        visit_loss = visit_loss.mean(0).neg()
+        visit_loss = visit_loss.sum(0).neg()
 
         return walker_loss, visit_loss

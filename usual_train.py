@@ -23,8 +23,8 @@ BATCH_SIZE = 32
 NUM_EPOCHS = 15
 EMBEDDING_DIM = 64
 DEVICE = torch.device('cuda:0')
-DATA = 'svhn'  # 'svhn' or 'mnist'
-SAVE_PATH = 'models/just_svhn'
+DATA = 'mnist'  # 'svhn' or 'mnist'
+SAVE_PATH = 'models/just_mnist'
 
 
 def get_loaders():

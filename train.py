@@ -3,6 +3,7 @@ import torch.nn as nn
 import torch.optim as optim
 from torch.optim.lr_scheduler import CosineAnnealingLR
 from torch.utils.data import DataLoader
+from torch.utils.data.sampler import WeightedRandomSampler
 import math
 
 from network import Network
@@ -17,19 +18,38 @@ CNN on mnist and svhn using associative domain adaptation.
 """
 
 
-BATCH_SIZE = 1000
-NUM_EPOCHS = 1
+BATCH_SIZE = 200
+NUM_EPOCHS = 25
 EMBEDDING_DIM = 64
 
-DELAY = 500  # number of steps before turning on additional losses
-GROWTH_STEPS = 300  # number of steps of linear growth of additional losses
+DELAY = 1000  # number of steps before turning on additional losses
+GROWTH_STEPS = 1000  # number of steps of linear growth of additional losses
 # so domain adaptation losses are in full strength after `DELAY + GROWTH_STEPS` steps
 
-BETA1, BETA2 = 1.0, 0.5
+BETA1, BETA2 = 1.0, 4.0
 DEVICE = torch.device('cuda:0')
-SOURCE_DATA = 'svhn'  # 'svhn' or 'mnist'
+SOURCE_DATA = 'mnist'  # 'svhn' or 'mnist'
 SAVE_PATH = 'models/svhn_source'
 LOGS_PATH = 'logs/svhn_source.json'
+
+
+def make_weights_for_balanced_classes(dataset, num_classes):                        
+    
+    count = [0] * num_classes                                                      
+    for _, label in dataset:                                                         
+        count[label] += 1                                                     
+    
+    weight_per_class = [0.0] * num_classes                                      
+    N = float(sum(count))                                                   
+    
+    for i in range(num_classes):                                                   
+        weight_per_class[i] = N/float(count[i])                                 
+    
+    weights = [0.0] * len(dataset)                                              
+    for i, (_, label) in enumerate(dataset):                                          
+        weights[i] = weight_per_class[label]                                  
+    
+    return torch.DoubleTensor(weights) 
 
 
 def train_and_evaluate():
@@ -37,47 +57,56 @@ def train_and_evaluate():
     svhn, mnist = get_datasets(is_training=True)
     source_dataset = svhn if SOURCE_DATA == 'svhn' else mnist
     target_dataset = mnist if SOURCE_DATA == 'svhn' else svhn
-    source_loader = DataLoader(source_dataset, BATCH_SIZE, shuffle=True, pin_memory=True, drop_last=True)
+    
+    weights = make_weights_for_balanced_classes(source_dataset, num_classes=10)
+    sampler = WeightedRandomSampler(weights, len(weights))    
+    source_loader = DataLoader(source_dataset, BATCH_SIZE, sampler=sampler, pin_memory=True, drop_last=True)
     target_loader = DataLoader(target_dataset, BATCH_SIZE, shuffle=True, pin_memory=True, drop_last=True)
-    print('\nsource dataset is', SOURCE_DATA, '\n')
 
     val_svhn, val_mnist = get_datasets(is_training=False)
     val_svhn_loader = DataLoader(val_svhn, BATCH_SIZE, shuffle=False, drop_last=False)
     val_mnist_loader = DataLoader(val_mnist, BATCH_SIZE, shuffle=False, drop_last=False)
+    print('\nsource dataset is', SOURCE_DATA, '\n')
 
     num_steps_per_epoch = math.floor(min(len(svhn), len(mnist)) / BATCH_SIZE)
     embedder = Network(image_size=(32, 32), embedding_dim=EMBEDDING_DIM).to(DEVICE)
     classifier = nn.Linear(EMBEDDING_DIM, 10).to(DEVICE)
+    import torch.nn.init
+    torch.nn.init.zeros_(classifier.bias)
     model = nn.Sequential(embedder, classifier)
-
-    optimizer = optim.Adam(lr=1e-3, params=model.parameters())
-    scheduler = CosineAnnealingLR(optimizer, T_max=num_steps_per_epoch * NUM_EPOCHS, eta_min=1e-6)
+    model.train()
+    
+    #params = [p for p in embedder.parameters()] + [p for p in classifier.parameters()] 
+    optimizer = optim.Adam(lr=1e-3, params=model.parameters(), weight_decay=1e-4)
+    scheduler = CosineAnnealingLR(optimizer, T_max=num_steps_per_epoch * NUM_EPOCHS - DELAY, eta_min=1e-6)
 
     cross_entropy = nn.CrossEntropyLoss()
     association = WalkerVisitLosses()
 
     text = 'e:{0:2d}, i:{1:3d}, classification loss: {2:.3f}, ' +\
-        'walker loss: {3:.3f}, visit loss: {4:.3f}, ' +\
+        'walker loss: {3:.3f}, visit loss: {4:.4f}, ' +\
         'total loss: {5:.3f}, lr: {6:.6f}'
     logs, val_logs = [], []
     i = 0  # iteration
 
     for e in range(NUM_EPOCHS):
+        model.train()
         for (x_source, y_source), (x_target, _) in zip(source_loader, target_loader):
 
             x_source = x_source.to(DEVICE)
             x_target = x_target.to(DEVICE)
             y_source = y_source.to(DEVICE)
-
+            
             x = torch.cat([x_source, x_target], dim=0)
             embeddings = embedder(x)
             a, b = torch.split(embeddings, BATCH_SIZE, dim=0)
             logits = classifier(a)
             usual_loss = cross_entropy(logits, y_source)
             walker_loss, visit_loss = association(a, b, y_source)
+            #loss = walker_loss
 
             if i > DELAY:
-                growth = torch.clamp((i - DELAY)/GROWTH_STEPS, 0.0, 1.0)
+                growth = torch.clamp(torch.tensor((i - DELAY)/GROWTH_STEPS).to(DEVICE), 0.0, 1.0)
                 loss = usual_loss + growth * (BETA1 * walker_loss + BETA2 * visit_loss)
             else:
                 loss = usual_loss
@@ -86,7 +115,8 @@ def train_and_evaluate():
             loss.backward()
             optimizer.step()
 
-            scheduler.step()
+            if i > DELAY:
+                scheduler.step()
             lr = scheduler.get_lr()[0]
 
             log = (e, i, usual_loss.item(), walker_loss.item(), visit_loss.item(), loss.item(), lr)

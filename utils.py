@@ -3,7 +3,7 @@ import json
 
 
 def evaluate(model, criterion, loader, device):
-
+    model.eval()
     total_loss = 0.0
     num_hits = 0
     num_samples = 0
@@ -37,15 +37,15 @@ def write_logs(logs, val_logs, path):
         'val_step', 'svhn_logloss', 'svhn_accuracy',
         'mnist_logloss', 'mnist_accuracy'
     ]
-    logs = {k: [] for k in keys + val_keys}
+    d = {k: [] for k in keys + val_keys}
 
     for t in logs:
         for i, k in enumerate(keys, 1):
-            logs[k].append(t[i])
+            d[k].append(t[i])
 
     for t in val_logs:
         for i, k in enumerate(val_keys):
-            logs[k].append(t[i])
+            d[k].append(t[i])
 
     with open(path, 'w') as f:
-        json.dump(logs, f)
+        json.dump(d, f)
