@@ -19,7 +19,7 @@ CNN on mnist and svhn using associative domain adaptation.
 
 
 BATCH_SIZE = 200
-NUM_EPOCHS = 25
+NUM_EPOCHS = 15
 EMBEDDING_DIM = 64
 
 DELAY = 1000  # number of steps before turning on additional losses

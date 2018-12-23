@@ -3,6 +3,7 @@ import torch.nn as nn
 import torch.optim as optim
 from torch.optim.lr_scheduler import CosineAnnealingLR
 from torch.utils.data import DataLoader
+from torch.utils.data.sampler import WeightedRandomSampler
 import math
 
 from network import Network
@@ -23,8 +24,8 @@ BATCH_SIZE = 32
 NUM_EPOCHS = 15
 EMBEDDING_DIM = 64
 DEVICE = torch.device('cuda:0')
-DATA = 'mnist'  # 'svhn' or 'mnist'
-SAVE_PATH = 'models/just_mnist'
+DATA = 'svhn'  # 'svhn' or 'mnist'
+SAVE_PATH = 'models/just_svhn'
 
 
 def get_loaders():
