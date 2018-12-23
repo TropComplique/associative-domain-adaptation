@@ -13,7 +13,7 @@ from utils import evaluate, make_weights_for_balanced_classes
 
 """
 The purpose of this script is to train a simple
-CNN on mnist and svhn using a usual training method.
+CNN on mnist or svhn using a usual training method.
 
 This is needed for comparison with
 models trained with domain adaptation.
