@@ -7,7 +7,7 @@ import math
 
 from network import Network
 from input_pipeline import get_datasets
-from utils import evaluate
+from utils import evaluate, make_weights_for_balanced_classes
 
 
 """
@@ -33,7 +33,9 @@ def get_loaders():
     val_svhn, val_mnist = get_datasets(is_training=False)
 
     train_dataset = svhn if DATA == 'svhn' else mnist
-    train_loader = DataLoader(train_dataset, BATCH_SIZE, shuffle=True, pin_memory=True, drop_last=True)
+    weights = make_weights_for_balanced_classes(train_dataset, num_classes=10)
+    sampler = WeightedRandomSampler(weights, len(weights))
+    train_loader = DataLoader(train_dataset, BATCH_SIZE, sampler=sampler, pin_memory=True, drop_last=True)
 
     val_svhn_loader = DataLoader(val_svhn, BATCH_SIZE, shuffle=False, drop_last=False)
     val_mnist_loader = DataLoader(val_mnist, BATCH_SIZE, shuffle=False, drop_last=False)

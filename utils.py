@@ -28,6 +28,25 @@ def evaluate(model, criterion, loader, device):
     return loss, accuracy
 
 
+def make_weights_for_balanced_classes(dataset, num_classes):
+
+    count = [0] * num_classes
+    for _, label in dataset:
+        count[label] += 1
+
+    weight_per_class = [0.0] * num_classes
+    N = float(sum(count))
+
+    for i in range(num_classes):
+        weight_per_class[i] = N/float(count[i])
+
+    weights = [0.0] * len(dataset)
+    for i, (_, label) in enumerate(dataset):
+        weights[i] = weight_per_class[label]
+
+    return torch.DoubleTensor(weights)
+
+
 def write_logs(logs, val_logs, path):
     keys = [
         'step', 'classification_loss',

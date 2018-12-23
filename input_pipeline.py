@@ -19,10 +19,10 @@ def get_datasets(is_training):
         download=True, transform=transforms.ToTensor()
     )
     mnist_transform = transforms.Compose([
-        transforms.Lambda(to_random_rgb),  # to RGB
+        # randomly color digit and background:
+        transforms.Lambda(to_random_rgb),
         transforms.Resize(32),
         transforms.ToTensor(),
-        # transforms.Lambda(lambda x: x.repeat(3, 1, 1))  # to RGB
     ])
     mnist = MNIST(
         'datasets/mnist/', train=is_training,
